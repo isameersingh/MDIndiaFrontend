@@ -16,7 +16,29 @@
 'use strict';
 
 // ─── Configuration ────────────────────────────────────────────────────────────
-const API_BASE = 'http://localhost:8000';
+// Everything environment-specific (which backend to talk to) lives in
+// window.ENV, set by env.js — a small file (committed to this repo) loaded
+// via a <script> tag before this one (see index.html + env.example.js +
+// README.md "Environment configuration"). This is the static-site
+// equivalent of a `.env` file: there's no build step here to read a real
+// .env, so flipping between local/staging/prod is a one-line edit (+
+// commit) to env.js instead of a code change in app.js.
+//
+// Falls back to localhost:8000 (the documented default) if env.js wasn't
+// found/loaded, so the app still boots (with an obvious "API Offline"
+// status) rather than throwing on a missing global.
+const ENV = window.ENV || {};
+const API_BASE = ENV.API_BASE || 'http://localhost:8000';
+const API_KEY = ENV.API_KEY || '';
+const ENV_NAME = ENV.ENV_NAME || 'local';
+const API_DOCS_URL = ENV.API_DOCS_URL || `${API_BASE}/docs`;
+
+// Exposed on window so other classic (non-module) scripts, like
+// citation-viewer.js, can build API URLs (e.g. the /pdf-page-image
+// endpoint) without duplicating this constant.
+window.API_BASE = API_BASE;
+window.API_KEY = API_KEY;
+
 const STORAGE_KEY = 'mdindia_threads';
 const MAX_HISTORY = 50;
 
@@ -41,17 +63,44 @@ const messageInput     = document.getElementById('messageInput');
 const sendBtn          = document.getElementById('sendBtn');
 const statusDot        = document.getElementById('statusDot');
 const statusText       = document.getElementById('statusText');
+const apiEnvBadge      = document.getElementById('apiEnvBadge');
+const apiDocsLink      = document.getElementById('apiDocsLink');
+
+// Reflect the active environment (env.js) in the sidebar footer — the
+// badge text and the Swagger/OpenAPI docs link both follow API_BASE
+// automatically, so switching env.js is the only change needed to point
+// the whole UI at local/staging/prod.
+if (apiEnvBadge) apiEnvBadge.textContent = ENV_NAME;
+if (apiDocsLink) {
+  apiDocsLink.href = API_DOCS_URL;
+  apiDocsLink.title = `Open Swagger UI for ${API_BASE}`;
+}
+
+// Merge the configured API key (env.js → API_KEY) into fetch options as
+// an Authorization header. No-op (returns options unchanged) when no key
+// is set, which is the normal case for a local backend running with
+// API_AUTH_ENABLED=false. See FRONTEND_INTEGRATION_GUIDE.md §3.
+function withAuth(options = {}) {
+  if (!API_KEY) return options;
+  return {
+    ...options,
+    headers: { ...(options.headers || {}), 'Authorization': `Bearer ${API_KEY}` },
+  };
+}
 
 // ─── API Health Check ─────────────────────────────────────────────────────────
 async function checkHealth() {
   statusDot.className = 'status-dot checking';
   statusText.textContent = 'Connecting...';
   try {
-    const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`${API_BASE}/health`, withAuth({ signal: AbortSignal.timeout(5000) }));
     const data = await res.json();
     if (data.status === 'ok') {
       statusDot.className = 'status-dot online';
-      statusText.textContent = 'API Connected';
+      const insurers = (data.insurers && data.insurers.length > 0)
+        ? data.insurers.join(', ')
+        : 'API';
+      statusText.textContent = `Connected · ${insurers}`;
     } else {
       throw new Error('not ready');
     }
@@ -79,7 +128,7 @@ function findThread(id) {
 
 async function createNewThread() {
   try {
-    const res = await fetch(`${API_BASE}/threads/new`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/threads/new`, withAuth({ method: 'POST' }));
     const data = await res.json();
     return data.thread_id;
   } catch {
@@ -119,7 +168,7 @@ function switchThread(threadId) {
     showWelcome(false);
     thread.messages.forEach(m => {
       if (m.role === 'user') appendUserMessage(m.content, false);
-      else if (m.role === 'assistant') appendAssistantMessage(m.content, m.thinking, false);
+      else if (m.role === 'assistant') appendAssistantMessage(m.content, m.citations, false);
     });
     scrollToBottom();
   }
@@ -246,22 +295,22 @@ function appendUserMessage(text, save = true) {
   }
 }
 
-function appendAssistantMessage(text, thinking = [], save = true) {
-  const row = createAssistantRow(text, thinking);
+function appendAssistantMessage(text, citations = [], save = true) {
+  const row = createAssistantRow(text, citations);
   chatMessages.appendChild(row);
   scrollToBottom();
 
   if (save && currentThreadId) {
     const thread = findThread(currentThreadId);
     if (thread) {
-      thread.messages.push({ role: 'assistant', content: text, thinking });
+      thread.messages.push({ role: 'assistant', content: text, citations });
       saveThreads();
     }
   }
   return row;
 }
 
-function createAssistantRow(text, thinking = []) {
+function createAssistantRow(text, citations = []) {
   const row = document.createElement('div');
   row.className = 'message-row assistant';
 
@@ -272,14 +321,11 @@ function createAssistantRow(text, thinking = []) {
       </svg>
     </div>`;
 
-  const thinkingHtml = buildThinkingPanel(thinking);
-
   row.innerHTML = `
     ${avatarHtml}
     <div style="flex:1;min-width:0;">
-      ${thinkingHtml}
       <div class="bubble">
-        <div class="message-content">${renderMarkdown(text)}</div>
+        <div class="message-content"></div>
         <div class="message-actions">
           <button class="action-btn copy-btn" title="Copy">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -291,6 +337,19 @@ function createAssistantRow(text, thinking = []) {
       </div>
     </div>`;
 
+  // Render markdown into content div, then inject citation chips
+  const contentEl = row.querySelector('.message-content');
+  const bubble = row.querySelector('.bubble');
+  contentEl.innerHTML = renderMarkdown(text);
+  if (citations && citations.length > 0) {
+    // Inline [N] chips only — no separate "Sources" summary row. The chips
+    // themselves stay clickable (registerCitations wires up the click/hover
+    // viewer), so every citation is still reachable, just not duplicated in
+    // a footer list.
+    CitationViewer.registerCitations(bubble, citations);
+    CitationViewer.injectInlineMarkers(contentEl, citations);
+  }
+
   // Copy handler
   row.querySelector('.copy-btn').addEventListener('click', function () {
     navigator.clipboard.writeText(text).then(() => {
@@ -300,18 +359,6 @@ function createAssistantRow(text, thinking = []) {
       }, 2000);
     });
   });
-
-  // Collapsible thinking panel
-  const header = row.querySelector('.thinking-header');
-  if (header) {
-    header.addEventListener('click', () => {
-      const steps = row.querySelector('.thinking-steps');
-      const chevron = row.querySelector('.thinking-chevron');
-      const collapsed = steps.style.display === 'none';
-      steps.style.display = collapsed ? 'flex' : 'none';
-      chevron.classList.toggle('open', collapsed);
-    });
-  }
 
   return row;
 }
@@ -358,11 +405,11 @@ async function sendMessage(text) {
   messageInput.value = '';
   autoResizeTextarea();
 
-  // Create an "in-progress" assistant row
-  const thinkingSteps = [];
-  let fullText = '';
+  // Create an "in-progress" assistant row (typing indicator until first token)
+  let fullText             = '';
+  let accumulatedCitations = [];
+  let accumulatedChart     = null;
 
-  // Build the row with a typing indicator initially
   const row = document.createElement('div');
   row.className = 'message-row assistant';
   row.innerHTML = `
@@ -399,121 +446,222 @@ async function sendMessage(text) {
     }
   }
 
-  function addThinkingStep(step) {
-    thinkingSteps.push(step);
-    if (!thinkingPanelEl) {
-      thinkingPanelEl = document.createElement('div');
-      thinkingPanelEl.className = 'thinking-panel';
-      thinkingPanelEl.innerHTML = `
-        <div class="thinking-header" id="thinkingToggle">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>
-          </svg>
-          <span id="thinkingLabel">Thinking...</span>
-          <svg class="thinking-chevron open" id="thinkingChevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <polyline points="18 15 12 9 6 15"/>
-          </svg>
-        </div>
-        <div class="thinking-steps" id="thinkingStepsList"></div>`;
-      streamingContent.insertBefore(thinkingPanelEl, streamingBubble);
+  // ── Thinking panel (streams Gemini model reasoning text) ────────────
+  let thinkingText         = '';
+  let thinkingStartTime    = 0;
+  let thinkingTimerInterval= null;
+  let thinkingBodyEl       = null;
+  let thinkingProseEl      = null;
+  let thinkingCursorEl     = null;
+  let toolTimelineEl       = null;
+  let thinkingFinalized    = false;
 
-      // Collapse toggle
-      thinkingPanelEl.querySelector('#thinkingToggle').addEventListener('click', () => {
-        const sl = thinkingPanelEl.querySelector('#thinkingStepsList');
+  const TOOL_LABELS = {
+    search_tariff_cards:  'Searching tariff cards',
+    compare_hospitals:    'Comparing hospitals',
+    compare_insurers:     'Comparing insurers',
+    get_page_content:     'Fetching page',
+    aggregate_collection: 'Aggregating data',
+    list_metadata_values: 'Listing values',
+  };
+
+  function ensureThinkingPanel() {
+    if (thinkingPanelEl) return;
+    thinkingStartTime = Date.now();
+    thinkingFinalized = false;
+
+    thinkingPanelEl = document.createElement('div');
+    thinkingPanelEl.className = 'thinking-panel';
+    thinkingPanelEl.innerHTML = `
+      <div class="thinking-header" id="thinkingToggle">
+        <span class="thinking-spinner" id="thinkingSpinner" aria-hidden="true"></span>
+        <span class="thinking-title" id="thinkingLabel">Thinking…</span>
+        <svg class="thinking-chevron open" id="thinkingChevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <polyline points="18 15 12 9 6 15"/>
+        </svg>
+      </div>
+      <div class="thinking-body" id="thinkingBody">
+        <div class="tool-timeline" id="toolTimeline"></div>
+        <div class="thinking-prose" id="thinkingProse"></div>
+      </div>`;
+
+    streamingContent.insertBefore(thinkingPanelEl, streamingBubble);
+    thinkingBodyEl   = thinkingPanelEl.querySelector('#thinkingBody');
+    thinkingProseEl  = thinkingPanelEl.querySelector('#thinkingProse');
+    toolTimelineEl   = thinkingPanelEl.querySelector('#toolTimeline');
+
+    // Append blinking cursor to prose
+    thinkingCursorEl = document.createElement('span');
+    thinkingCursorEl.className = 'thinking-cursor';
+    thinkingProseEl.appendChild(thinkingCursorEl);
+
+    // Expand body immediately (open by default while thinking)
+    thinkingBodyEl.style.maxHeight = '280px';
+    thinkingBodyEl.classList.add('open');
+
+    // Live timer — updates every second
+    thinkingTimerInterval = setInterval(() => {
+      if (thinkingFinalized) return;
+      const secs = Math.floor((Date.now() - thinkingStartTime) / 1000);
+      const label = thinkingPanelEl.querySelector('#thinkingLabel');
+      if (label) label.textContent = `Thinking for ${secs}s…`;
+    }, 1000);
+
+    // Collapse/expand on header click (smooth max-height transition)
+    thinkingPanelEl.querySelector('#thinkingToggle').addEventListener('click', () => {
+      const body    = thinkingBodyEl;
+      const ch      = thinkingPanelEl.querySelector('#thinkingChevron');
+      const isOpen  = body.classList.contains('open');
+      if (isOpen) {
+        body.style.maxHeight = body.scrollHeight + 'px'; // snapshot before collapsing
+        requestAnimationFrame(() => {
+          body.style.maxHeight = '0';
+          body.classList.remove('open');
+          ch.classList.remove('open');
+        });
+      } else {
+        body.style.maxHeight = body.scrollHeight + 'px';
+        body.classList.add('open');
+        ch.classList.add('open');
+        // Let CSS transition finish, then switch to auto so content can grow
+        body.addEventListener('transitionend', () => {
+          if (body.classList.contains('open')) body.style.maxHeight = '280px';
+        }, { once: true });
+      }
+    });
+  }
+
+  function appendThinkingText(txt) {
+    ensureThinkingPanel();
+    thinkingText += txt;
+    // Render as prose paragraphs (split on double-newline)
+    if (thinkingCursorEl) thinkingCursorEl.remove();
+    const paragraphs = thinkingText.split(/\n\n+/).filter(Boolean);
+    thinkingProseEl.innerHTML = paragraphs
+      .map(p => `<p>${escapeHtml(p.replace(/\n/g, ' '))}</p>`)
+      .join('');
+    thinkingProseEl.appendChild(thinkingCursorEl);
+    // Auto-scroll while streaming
+    thinkingBodyEl.scrollTop = thinkingBodyEl.scrollHeight;
+  }
+
+  function addToolBadge(toolName, done = false) {
+    ensureThinkingPanel();
+    const label = TOOL_LABELS[toolName] || toolName.replace(/_/g, ' ');
+    const stepId = 'step-' + toolName.replace(/\W/g, '_');
+    const existing = toolTimelineEl.querySelector('#' + stepId);
+    if (existing) {
+      if (done) {
+        existing.className = 'timeline-step done';
+        existing.querySelector('.step-dot').textContent = '✓';
+        existing.querySelector('.step-label').textContent = label;
+      }
+      return;
+    }
+    const step = document.createElement('div');
+    step.id = stepId;
+    step.className = `timeline-step${done ? ' done' : ''}`;
+    step.innerHTML = `<span class="step-dot">${done ? '✓' : ''}</span><span class="step-label">${escapeHtml(label)}${done ? '' : '…'}</span>`;
+    toolTimelineEl.appendChild(step);
+  }
+
+  function finalizeThinkingPanel() {
+    if (!thinkingPanelEl || thinkingFinalized) return;
+    thinkingFinalized = true;
+    // Stop live timer
+    if (thinkingTimerInterval) { clearInterval(thinkingTimerInterval); thinkingTimerInterval = null; }
+    // Remove blinking cursor
+    if (thinkingCursorEl) thinkingCursorEl.remove();
+    // Update header: spinner → brain icon, label → "Thought for Xs"
+    const secs  = ((Date.now() - thinkingStartTime) / 1000).toFixed(1);
+    const label = thinkingPanelEl.querySelector('#thinkingLabel');
+    if (label) label.textContent = `Thought for ${secs}s`;
+    const spinner = thinkingPanelEl.querySelector('#thinkingSpinner');
+    if (spinner) {
+      spinner.className = 'thinking-brain-icon';
+      spinner.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26C17.81 13.47 19 11.38 19 9c0-3.87-3.13-7-7-7z"/><line x1="9" y1="17" x2="9" y2="21"/><line x1="15" y1="17" x2="15" y2="21"/></svg>`;
+    }
+    // Auto-collapse body (smooth transition)
+    if (thinkingBodyEl && thinkingBodyEl.classList.contains('open')) {
+      thinkingBodyEl.style.maxHeight = thinkingBodyEl.scrollHeight + 'px';
+      requestAnimationFrame(() => {
+        thinkingBodyEl.style.maxHeight = '0';
+        thinkingBodyEl.classList.remove('open');
         const ch = thinkingPanelEl.querySelector('#thinkingChevron');
-        const c = sl.style.display === 'none';
-        sl.style.display = c ? 'flex' : 'none';
-        ch.classList.toggle('open', c);
+        if (ch) ch.classList.remove('open');
       });
     }
-
-    const stepsList = thinkingPanelEl.querySelector('#thinkingStepsList');
-    const stepEl = document.createElement('div');
-    stepEl.className = 'thinking-step';
-    stepEl.innerHTML = `
-      <span class="step-icon">${step.icon}</span>
-      <div class="step-content">
-        <div class="step-label">${escapeHtml(step.label)}</div>
-        ${step.args ? `<div class="step-args">${escapeHtml(step.args)}</div>` : ''}
-      </div>`;
-    stepsList.appendChild(stepEl);
-
-    const label = thinkingPanelEl.querySelector('#thinkingLabel');
-    label.textContent = `Thought ${thinkingSteps.length} step${thinkingSteps.length > 1 ? 's' : ''}`;
-    scrollToBottom();
   }
 
   try {
-    const response = await fetch(`${API_BASE}/chat`, {
+    const response = await fetch(`${API_BASE}/chat`, withAuth({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, thread_id: currentThreadId })
-    });
+    }));
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-    const reader = response.body.getReader();
+    const reader  = response.body.getReader();
     const decoder = new TextDecoder();
-
-    // Add streaming cursor
-    let cursorEl = null;
+    let   buffer  = ''; // SSE line buffer (handles cross-chunk JSON)
+    let   cursorEl = null;
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const raw = decoder.decode(value, { stream: true });
-      const lines = raw.split('\n');
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
         let event;
         try { event = JSON.parse(line.slice(6)); }
-        catch { continue; }
+        catch (err) {
+          console.error('SSE parse error:', err, line.slice(0, 80));
+          continue;
+        }
 
         switch (event.type) {
+
+          // ── Model thinking text (Gemini thinking mode) ────────
+          case 'thinking_text':
+            appendThinkingText(event.text || '');
+            scrollToBottom();
+            break;
+
+          // ── Agent framework step (suppressed from UI) ─────────
           case 'thinking':
-            // General thinking step (agent re-reasoning)
-            addThinkingStep({
-              icon: '🤔',
-              label: event.text,
-              args: null
-            });
+            // Just ensure the panel exists as a container; text comes from thinking_text
+            ensureThinkingPanel();
             break;
 
+          // ── Tool being called ─────────────────────────────────
           case 'tool_start':
-            // Agent is calling a specific tool
-            const argsStr = event.args
-              ? Object.entries(event.args)
-                  .filter(([, v]) => v != null)
-                  .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
-                  .join(' | ')
-              : '';
-            addThinkingStep({
-              icon: '🔧',
-              label: `Calling: ${event.tool}`,
-              args: argsStr || null
-            });
+            addToolBadge(event.tool, false);
+            scrollToBottom();
             break;
 
+          // ── Tool finished ─────────────────────────────────────────
           case 'tool_end':
-            addThinkingStep({
-              icon: '✅',
-              label: `Tool complete`,
-              args: event.preview ? event.preview.slice(0, 120) : null
-            });
+            // event.tool is set for tool_end from our SSE layer
+            if (event.tool) addToolBadge(event.tool, true);
             break;
 
+          // ── Answer tokens (stream into contentEl) ─────────────
           case 'token':
             if (!hasStartedStreaming) {
               hasStartedStreaming = true;
+              // Auto-collapse thinking panel the moment the answer starts — Claude-style
+              finalizeThinkingPanel();
               ensureContentEl();
               cursorEl = document.createElement('span');
               cursorEl.className = 'streaming-cursor';
               contentEl.appendChild(cursorEl);
             }
             fullText += event.text;
-            // Re-render markdown with cursor
             if (cursorEl) cursorEl.remove();
             contentEl.innerHTML = renderMarkdown(fullText);
             cursorEl = document.createElement('span');
@@ -522,12 +670,43 @@ async function sendMessage(text) {
             scrollToBottom();
             break;
 
-          case 'done':
-            // Remove cursor and finalize
-            if (cursorEl) cursorEl.remove();
-            if (contentEl) contentEl.innerHTML = renderMarkdown(fullText);
+          case 'chart_data':
+            accumulatedChart = event;
+            break;
 
-            // Add action buttons
+          case 'citations':
+            accumulatedCitations = event.data || [];
+            break;
+
+          case 'done': {
+            // Finalize thinking panel
+            finalizeThinkingPanel();
+
+            // Remove answer cursor
+            if (cursorEl) cursorEl.remove();
+
+            // Render final markdown — then inject citation chips via DOM text-node walk
+            if (contentEl) {
+              contentEl.innerHTML = renderMarkdown(fullText);
+              if (accumulatedCitations.length > 0) {
+                CitationViewer.registerCitations(streamingBubble, accumulatedCitations);
+                CitationViewer.injectInlineMarkers(contentEl, accumulatedCitations);
+              }
+            } else {
+              // If no tokens were received, ensure we at least show something
+              ensureContentEl();
+            }
+
+            // Comparison hospital cards
+            if (accumulatedChart) {
+              const chartEl = renderChart(accumulatedChart);
+              if (chartEl) streamingBubble.appendChild(chartEl);
+            }
+
+            // Inline [N] chips only — no separate "Sources" summary row
+            // (see the identical note in appendMessage() above).
+
+            // Copy button
             const actions = document.createElement('div');
             actions.className = 'message-actions';
             actions.innerHTML = `<button class="action-btn copy-btn">
@@ -538,22 +717,26 @@ async function sendMessage(text) {
             actions.querySelector('.copy-btn').addEventListener('click', function () {
               navigator.clipboard.writeText(fullText).then(() => {
                 this.textContent = '✓ Copied!';
-                setTimeout(() => { this.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy`; }, 2000);
+                setTimeout(() => {
+                  this.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy`;
+                }, 2000);
               });
             });
 
-            // Save to thread
             if (currentThreadId) {
               const thread = findThread(currentThreadId);
               if (thread) {
-                thread.messages.push({ role: 'assistant', content: fullText, thinking: thinkingSteps });
+                thread.messages.push({ role: 'assistant', content: fullText, citations: accumulatedCitations });
                 saveThreads();
               }
             }
             scrollToBottom();
             break;
+          }
+
 
           case 'error':
+            finalizeThinkingPanel();
             ensureContentEl();
             if (cursorEl) cursorEl.remove();
             streamingBubble.classList.add('error');
@@ -565,7 +748,7 @@ async function sendMessage(text) {
   } catch (err) {
     ensureContentEl();
     streamingBubble.classList.add('error');
-    contentEl.textContent = `Connection error: ${err.message}. Please ensure the API server is running.`;
+    contentEl.textContent = `Connection error: ${err.message}. Is the API running?`;
   } finally {
     isStreaming = false;
     setSendLoading(false);
@@ -573,55 +756,173 @@ async function sendMessage(text) {
   }
 }
 
-// ─── Markdown Renderer ────────────────────────────────────────────────────────
-function renderMarkdown(text) {
-  if (!text) return '';
-  let html = escapeHtml(text);
+/**
+ * CITATION RULES — STRICTLY MANDATORY:
+  - After EVERY specific tariff value, price, or charge you write, you MUST
+    immediately append the citation number in brackets, like this: ₹5,000/day [3]
+  - The citation number [N] must match the result number from the tool output.
+  - In comparison tables, every cell value must have its citation: ₹18,000 [2]
+  - If you mention a hospital name with a specific fact, cite it: Apollo Mumbai [1]
+  - NEVER write a price or medical charge without [N] immediately after it.
+  - Do NOT group all citations at the end — they must appear inline.
+  - If data is missing for a cell, write: N/A
 
-  // Code blocks (must come before inline code)
-  html = html.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) =>
-    `<pre><code>${code.trim()}</code></pre>`);
+GENERAL RULES:
+  - Always call at least one tool before answering.
+  - Never answer from memory alone.
+  - Use ₹ symbol for all Indian Rupee amounts.
+  - Be concise after the table. Do not explain what you are about to do — just do it.
+ */
 
-  // Tables
-  html = html.replace(/(\|.+\|\n)+/g, match => {
-    const lines = match.trim().split('\n').filter(l => l.trim());
-    if (lines.length < 2) return match;
-    const rows = lines.filter(l => !/^\|[-: |]+\|$/.test(l.trim()));
-    const header = rows[0];
-    const body = rows.slice(1);
-    const cells = row => row.split('|').filter((_, i, a) => i > 0 && i < a.length - 1).map(c => c.trim());
-    const th = cells(header).map(c => `<th>${c}</th>`).join('');
-    const trs = body.map(r => `<tr>${cells(r).map(c => `<td>${c}</td>`).join('')}</tr>`).join('');
-    return `<table><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table>`;
+/**
+ * Render hospital comparison card grid.
+ * chart_data = {type, insurance_company, procedure, hospitals: [{name, city, state, ...}]}
+ */
+function renderChart(chartData) {
+  if (!chartData || !chartData.hospitals || !chartData.hospitals.length) return null;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'chart-container';
+
+  const title = chartData.insurance_company
+    ? `${chartData.insurance_company}${chartData.procedure ? ' — ' + chartData.procedure : ''}`
+    : 'Hospital Comparison';
+
+  wrapper.innerHTML = `
+    <div class="chart-header">
+      <span class="chart-title">🏥 ${escapeHtml(title)} (${chartData.hospitals.length} hospitals)</span>
+    </div>
+    <div class="chart-body">
+      <div class="hospital-cards-grid" id="hospitalCardsGrid"></div>
+    </div>`;
+
+  const grid = wrapper.querySelector('#hospitalCardsGrid');
+  chartData.hospitals.forEach((hosp, idx) => {
+    const card = document.createElement('div');
+    card.className = 'hospital-card';
+    card.innerHTML = `
+      <div class="hospital-card-num">Hospital ${idx + 1}</div>
+      <div class="hospital-card-name">${escapeHtml(hosp.name || 'Unknown')}</div>
+      <div class="hospital-card-location">
+        ${escapeHtml(hosp.city || '')}${hosp.city && hosp.state ? ', ' : ''}${escapeHtml(hosp.state || '')}
+      </div>
+      ${hosp.pdf_path ? '<div class="hospital-card-action">📄 View Source</div>' : ''}`;
+
+    if (hosp.pdf_path) {
+      card.addEventListener('click', () => CitationViewer.open([{
+        id: idx + 1,
+        hospital: hosp.name,
+        city: hosp.city || '',
+        state: hosp.state || '',
+        page: 1,
+        pdf_path: hosp.pdf_path,
+        block_type: 'text',
+        bbox: { x1: 0, y1: 0, x2: 1, y2: 1 },
+        verified: null,
+      }], idx + 1));
+    }
+    grid.appendChild(card);
   });
 
-  // Headers
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  return wrapper;
+}
 
-  // Bold and italic
+/* ─────────────────────────────────────────────────────────────────────────
+   Legacy PDF viewer panel (iframe + OCR text tab) has been replaced by the
+   CitationViewer component (citation-viewer.js), which renders source page
+   images with bbox-accurate highlight boxes, a metadata sidebar, and
+   multi-citation paging. See CitationViewer.open() / registerCitations() /
+   injectInlineMarkers() used throughout this file — only inline [N] chips
+   are shown (no separate "Sources" footer row); each chip is still fully
+   clickable/hoverable via registerCitations().
+   ───────────────────────────────────────────────────────────────────────── */
+
+// ─── Markdown Renderer ────────────────────────────────────────────────────────
+/**
+ * Convert markdown text to HTML.
+ *
+ * CRITICAL ORDER:
+ * 1. Extract table blocks from raw text FIRST (before any escaping)
+ *    so that pipe chars and [N] markers survive intact.
+ * 2. Escape remaining text.
+ * 3. Apply inline/block formatting.
+ *
+ * Citation [N] tokens are left as plain text nodes so that
+ * CitationViewer.injectInlineMarkers() can find them via TreeWalker afterwards.
+ */
+// Placeholder token that survives marked.js + DOMPurify without being altered.
+// Must not contain chars that HTML/markdown parsers treat specially.
+const CITE_PLACEHOLDER_RE  = /\[(\d+)\]/g;
+const CITE_RESTORE_RE      = /XCITEX(\d+)XCITEX/g;
+function _protectCiteMarkers(text) {
+  return text.replace(CITE_PLACEHOLDER_RE, 'XCITEX$1XCITEX');
+}
+function _restoreCiteMarkers(html) {
+  return html.replace(CITE_RESTORE_RE, '[$1]');
+}
+
+/**
+ * Render markdown to sanitised HTML using marked.js + DOMPurify.
+ *
+ * Citation markers [N] are protected before parsing so marked.js never
+ * interprets them as footnotes or link references.
+ * Tables are wrapped in .md-table-wrap for horizontal scrolling.
+ */
+function renderMarkdown(text) {
+  if (!text) return '';
+
+  // Use marked.js when available (loaded via CDN in index.html)
+  if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+    // Step 1: protect [N] from being parsed as markdown link references
+    const protected_ = _protectCiteMarkers(text);
+
+    marked.use({
+      gfm:      true,
+      breaks:   true,
+      pedantic: false,
+    });
+    const rawHtml = marked.parse(protected_);
+
+    // Step 2: sanitize
+    let safe = DOMPurify.sanitize(rawHtml, {
+      ADD_TAGS: ['table', 'thead', 'tbody', 'tr', 'th', 'td'],
+      ADD_ATTR: ['data-cite-id', 'data-chunk-id', 'data-pdf-path', 'data-page',
+                 'data-hospital', 'data-insurance', 'data-section', 'data-table',
+                 'data-snippet'],
+    });
+
+    // Step 3: restore [N] markers (now plain text in the HTML)
+    safe = _restoreCiteMarkers(safe);
+
+    // Step 4: wrap every <table> in a .md-table-wrap scroll container
+    safe = safe.replace(/<table>/g,  '<div class="md-table-wrap"><table>');
+    safe = safe.replace(/<\/table>/g, '</table></div>');
+    return safe;
+  }
+
+  // ── Fallback (CDN not yet loaded) ──
+  let html = escapeHtml(text);
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-  // Bullet lists
-  html = html.replace(/^[*\-] (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, match => `<ul>${match}</ul>`);
-
-  // Numbered lists
-  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-
-  // Paragraphs (double newlines)
+  html = html.replace(/\*(.+?)\*/g,     '<em>$1</em>');
   html = html.replace(/\n\n+/g, '</p><p>');
-
-  // Single newlines to <br> within paragraphs
   html = html.replace(/\n/g, '<br>');
-
   return html;
 }
+
+/**
+ * Escape HTML but preserve [N] citation tokens as-is
+ * (used for table cell content so TreeWalker can find them).
+ */
+function escapeHtmlLite(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  // Note: we do NOT escape [ and ] so [N] citation markers survive
+}
+
+
 
 // ─── UI Helpers ───────────────────────────────────────────────────────────────
 function escapeHtml(str) {
@@ -722,6 +1023,11 @@ sidebarOverlay.addEventListener('click', closeMobileSidebar);
 
 // Search
 searchInput.addEventListener('input', e => renderHistory(e.target.value));
+
+// ─── Citation click/hover handling ───────────────────────────────────────────
+// Fully owned by citation-viewer.js — see CitationViewer's global delegated
+// listeners for hover tooltips and click-to-open behaviour on
+// `.citation-chip` (inline markers) and `.citation-badge` (sources row).
 
 // ─── Initialise ───────────────────────────────────────────────────────────────
 async function init() {

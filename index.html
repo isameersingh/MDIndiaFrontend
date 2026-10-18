@@ -9,153 +9,306 @@
     content="Enterprise AI assistant for querying hospital tariff cards and insurance data across multiple insurance companies." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
 
   <!-- ═══════════════════════════════════════════════════════
-       SIDEBAR
+       APP SHELL — sidebar + main
   ═══════════════════════════════════════════════════════ -->
-  <aside class="sidebar" id="sidebar">
+  <div class="app-shell">
 
-    <!-- Brand -->
-    <div class="sidebar-brand">
-      <div class="brand-logo">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-        </svg>
-      </div>
-      <span class="brand-name">MD India AI</span>
-      <button class="sidebar-toggle-btn" id="sidebarToggle" title="Toggle sidebar" aria-label="Toggle sidebar">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 12h18M3 6h18M3 18h18" />
-        </svg>
-      </button>
-    </div>
+    <!-- ─── SIDEBAR ─────────────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar">
 
-    <!-- New Chat -->
-    <button class="new-chat-btn" id="newChatBtn">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-        stroke-linecap="round">
-        <line x1="12" y1="5" x2="12" y2="19" />
-        <line x1="5" y1="12" x2="19" y2="12" />
-      </svg>
-      New Chat
-    </button>
-
-    <!-- Search -->
-    <div class="sidebar-search">
-      <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-        stroke-width="2" stroke-linecap="round">
-        <circle cx="11" cy="11" r="8" />
-        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-      </svg>
-      <input type="text" id="searchInput" placeholder="Search conversations..." />
-    </div>
-
-    <!-- History -->
-    <div class="history-container" id="historyContainer">
-      <div class="history-empty" id="historyEmpty">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-          stroke-linecap="round">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-        <p>No conversations yet</p>
-      </div>
-      <div id="historyList"></div>
-    </div>
-
-    <!-- Sidebar Footer -->
-    <div class="sidebar-footer">
-      <div class="api-status" id="apiStatus">
-        <span class="status-dot" id="statusDot"></span>
-        <span id="statusText">Connecting...</span>
-      </div>
-    </div>
-  </aside>
-
-  <!-- ═══════════════════════════════════════════════════════
-       MAIN AREA
-  ═══════════════════════════════════════════════════════ -->
-  <main class="main" id="main">
-
-    <!-- Top Bar -->
-    <header class="topbar">
-      <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open sidebar">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round">
-          <path d="M3 12h18M3 6h18M3 18h18" />
-        </svg>
-      </button>
-      <div class="model-badge">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-        </svg>
-        Gemini 2.5 Pro
-      </div>
-    </header>
-
-    <!-- Messages Area -->
-    <div class="messages-area" id="messagesArea">
-
-      <!-- Welcome Screen (shown when no messages) -->
-      <div class="welcome-screen" id="welcomeScreen">
-        <div class="welcome-logo">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-          </svg>
+      <!-- Brand -->
+      <div class="sidebar-brand">
+        <div class="brand-logo">
+          <img src="logo/mdindia_healthcare_services_tpa_pvt_ltd_logo.jpeg" alt="MD India Logo" class="brand-logo-img" />
         </div>
-        <h1 class="welcome-title">MD India Insurance AI</h1>
-        <p class="welcome-subtitle">Your intelligent assistant for hospital tariff cards & insurance queries</p>
-        <div class="suggestion-grid">
-          <button class="suggestion-card" data-prompt="List all insurance companies available in the database">
-            <span class="suggestion-icon">🏢</span>
-            <span>List all insurance companies</span>
-          </button>
-          <button class="suggestion-card" data-prompt="How many hospitals are in Niva Bupa's network?">
-            <span class="suggestion-icon">🏥</span>
-            <span>How many hospitals in Niva Bupa?</span>
-          </button>
-          <button class="suggestion-card" data-prompt="What are the ICU charges per day across different hospitals?">
-            <span class="suggestion-icon">💊</span>
-            <span>Compare ICU charges across hospitals</span>
-          </button>
-          <button class="suggestion-card" data-prompt="Which states are covered by Tata AIG insurance?">
-            <span class="suggestion-icon">🗺️</span>
-            <span>States covered by Tata AIG</span>
-          </button>
+        <div class="brand-text">
+          <span class="brand-name">MD India</span>
+          <span class="brand-tag">AI Assistant</span>
         </div>
-      </div>
-
-      <!-- Chat messages injected here by JS -->
-      <div id="chatMessages"></div>
-
-    </div>
-
-    <!-- Input Area -->
-    <div class="input-area">
-      <div class="input-wrapper" id="inputWrapper">
-        <textarea id="messageInput" placeholder="Ask anything about hospital tariffs, insurance coverage, costs..."
-          rows="1" maxlength="4000" aria-label="Message input"></textarea>
-        <button class="send-btn" id="sendBtn" disabled aria-label="Send message">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+        <button class="sidebar-toggle-btn" id="sidebarToggle" title="Toggle sidebar" aria-label="Toggle sidebar">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            <rect x="3" y="4" width="18" height="16" rx="3" />
+            <line x1="9.5" y1="4" x2="9.5" y2="20" />
           </svg>
         </button>
       </div>
-      <p class="input-hint">MD India AI can make mistakes. Always verify tariff information with official sources.</p>
-    </div>
 
-  </main>
+      <!-- New Chat -->
+      <button class="new-chat-btn" id="newChatBtn">
+        <span class="new-chat-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </span>
+        New chat
+      </button>
+
+      <!-- Search -->
+      <div class="sidebar-search">
+        <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        <input type="text" id="searchInput" placeholder="Search conversations…" />
+      </div>
+
+      <!-- History -->
+      <div class="history-container" id="historyContainer">
+        <div class="history-empty" id="historyEmpty">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          <p>No conversations yet</p>
+        </div>
+        <div id="historyList"></div>
+      </div>
+
+      <!-- Sidebar Footer -->
+      <div class="sidebar-footer">
+        <div class="api-status" id="apiStatus">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Connecting…</span>
+        </div>
+        <div class="api-env-row">
+          <span class="api-env-badge" id="apiEnvBadge">local</span>
+          <a class="api-docs-link" id="apiDocsLink" href="#" target="_blank" rel="noopener">
+            API Docs
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 17L17 7M7 7h10v10" />
+            </svg>
+          </a>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ─── MAIN CHAT ────────────────────────────────────────── -->
+    <main class="main" id="main">
+
+      <!-- Top Bar -->
+      <header class="topbar">
+        <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open sidebar">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round">
+            <path d="M3 12h18M3 6h18M3 18h18" />
+          </svg>
+        </button>
+        <div class="model-badge">
+          <span class="model-badge-dot"></span>
+          Gemini 2.5 Pro <span class="model-badge-sep">·</span> Thinking
+        </div>
+        <div class="topbar-spacer"></div>
+        <div class="topbar-hint">Answers cite exact source pages</div>
+      </header>
+
+      <!-- Messages Area -->
+      <div class="messages-area" id="messagesArea">
+
+        <!-- Welcome Screen -->
+        <div class="welcome-screen" id="welcomeScreen">
+          <div class="welcome-logo">
+            <img src="logo/mdindia_healthcare_services_tpa_pvt_ltd_logo.jpeg" alt="MD India Logo" />
+          </div>
+          <h1 class="welcome-title">What can I look up for you?</h1>
+          <p class="welcome-subtitle">Ask about hospital tariff cards, insurance coverage, or cost comparisons —
+            every figure is traceable to its source page.</p>
+          <div class="suggestion-grid">
+            <button class="suggestion-card"
+              data-prompt="Compare ICU charges and room rent across all hospitals under ABHI insurance">
+              <span class="suggestion-icon icon-compare"></span>
+              <span>Compare hospital charges under ABHI</span>
+            </button>
+            <button class="suggestion-card"
+              data-prompt="What is the price of CBC (Complete Blood Count) under ABHI at Apollo Hospital?">
+              <span class="suggestion-icon icon-lab"></span>
+              <span>CBC price under ABHI at Apollo</span>
+            </button>
+            <button class="suggestion-card"
+              data-prompt="Compare ICU charges between ABHI and RELIANCE at Apollo Hospital">
+              <span class="suggestion-icon icon-scale"></span>
+              <span>Compare ABHI vs RELIANCE — ICU charges</span>
+            </button>
+            <button class="suggestion-card"
+              data-prompt="Is dialysis covered under RELIANCE insurance? Which hospitals offer it?">
+              <span class="suggestion-icon icon-drop"></span>
+              <span>Is dialysis covered under RELIANCE?</span>
+            </button>
+            <button class="suggestion-card" data-prompt="How many hospitals does ABHI have and in which states?">
+              <span class="suggestion-icon icon-hospital"></span>
+              <span>ABHI hospital count &amp; states</span>
+            </button>
+            <button class="suggestion-card"
+              data-prompt="What are the cataract surgery package charges under UNIVERSAL insurance?">
+              <span class="suggestion-icon icon-pill"></span>
+              <span>Cataract surgery charges — UNIVERSAL</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Chat messages injected here by JS -->
+        <div id="chatMessages"></div>
+
+      </div>
+
+      <!-- Input Area -->
+      <div class="input-area">
+        <div class="input-wrapper" id="inputWrapper">
+          <textarea id="messageInput" placeholder="Ask anything about hospital tariffs, insurance coverage, costs…"
+            rows="1" maxlength="4000" aria-label="Message input"></textarea>
+          <button class="send-btn" id="sendBtn" disabled aria-label="Send message">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+          </button>
+        </div>
+        <p class="input-hint">MD India AI can make mistakes. Always verify tariff information with official sources.
+        </p>
+      </div>
+
+    </main>
+
+  </div><!-- /.app-shell -->
 
   <!-- Sidebar Overlay (mobile) -->
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
+  <!-- ═══════════════════════════════════════════════════════
+       CITATION VIEWER — slide-in source panel
+       Structure is populated/managed entirely by citation-viewer.js
+  ═══════════════════════════════════════════════════════ -->
+  <div class="cv-backdrop" id="cvBackdrop"></div>
+  <section class="cv-drawer" id="cvDrawer" role="dialog" aria-modal="true" aria-label="Citation source viewer">
+
+    <!-- Header -->
+    <div class="cv-header">
+      <div class="cv-header-main">
+        <span class="cv-header-badge" id="cvHeaderNum">1</span>
+        <div class="cv-header-text">
+          <div class="cv-header-title" id="cvHeaderHospital">Hospital</div>
+          <div class="cv-header-sub" id="cvHeaderSub">Table · Page 1</div>
+        </div>
+      </div>
+      <div class="cv-header-actions">
+        <div class="cv-pager" id="cvPager">
+          <button class="cv-pager-btn" id="cvPrevBtn" aria-label="Previous citation">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+          </button>
+          <span class="cv-pager-count" id="cvPagerCount">1 / 1</span>
+          <button class="cv-pager-btn" id="cvNextBtn" aria-label="Next citation">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+          </button>
+        </div>
+        <button class="cv-close-btn" id="cvCloseBtn" aria-label="Close citation viewer">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Body: image viewer + metadata sidebar -->
+    <div class="cv-body">
+
+      <!-- Source page viewer -->
+      <div class="cv-viewer" id="cvViewer">
+        <div class="cv-viewer-scroll" id="cvViewerScroll">
+          <div class="cv-page-frame" id="cvPageFrame">
+            <img class="cv-page-img" id="cvPageImg" alt="Source page" />
+            <div class="cv-boxes-layer" id="cvBoxesLayer"></div>
+          </div>
+        </div>
+
+        <!-- Graceful degradation placeholder -->
+        <div class="cv-placeholder" id="cvPlaceholder">
+          <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="9" cy="9" r="2" />
+            <path d="M21 15l-5-5L5 21" />
+          </svg>
+          <p class="cv-placeholder-title">Source page image unavailable</p>
+          <p class="cv-placeholder-sub">This citation has no linked page image yet. The metadata and matched text
+            below are still available.</p>
+        </div>
+
+        <div class="cv-zoom-controls" id="cvZoomControls">
+          <button class="cv-zoom-btn" id="cvZoomOut" aria-label="Zoom out">−</button>
+          <span class="cv-zoom-level" id="cvZoomLevel">100%</span>
+          <button class="cv-zoom-btn" id="cvZoomIn" aria-label="Zoom in">+</button>
+        </div>
+      </div>
+
+      <!-- Metadata sidebar -->
+      <aside class="cv-meta">
+        <div class="cv-meta-section">
+          <div class="cv-meta-row">
+            <span class="cv-meta-label">Hospital</span>
+            <span class="cv-meta-value" id="metaHospital">—</span>
+          </div>
+          <div class="cv-meta-row">
+            <span class="cv-meta-label">Insurance</span>
+            <span class="cv-meta-value" id="metaInsurance">—</span>
+          </div>
+          <div class="cv-meta-row">
+            <span class="cv-meta-label">Location</span>
+            <span class="cv-meta-value" id="metaLocation">—</span>
+          </div>
+          <div class="cv-meta-row">
+            <span class="cv-meta-label">Page</span>
+            <span class="cv-meta-value" id="metaPage">—</span>
+          </div>
+          <div class="cv-meta-row">
+            <span class="cv-meta-label">Source block</span>
+            <span class="cv-meta-value" id="metaTable">—</span>
+          </div>
+          <div class="cv-meta-row" id="metaVerifiedRow" hidden>
+            <span class="cv-meta-label">Verified</span>
+            <span class="cv-meta-value"><span class="cv-verified-badge" id="metaVerifiedBadge"></span></span>
+          </div>
+        </div>
+
+        <div class="cv-meta-divider"></div>
+
+        <div class="cv-meta-section cv-snippet-section">
+          <div class="cv-meta-label cv-snippet-label">Matched snippet</div>
+          <div class="cv-snippet-box" id="metaSnippet">—</div>
+        </div>
+
+        <div class="cv-meta-footer">
+          <span class="cv-blocktype-tag" id="metaBlockType">text</span>
+        </div>
+      </aside>
+
+    </div>
+  </section>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- Markdown rendering + sanitisation -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <!-- Environment config — sets window.ENV (API_BASE, etc). Must load
+       before citation-viewer.js / app.js. Committed to this repo — see
+       env.example.js and README.md "Environment configuration" for setup. -->
+  <script src="env.js"></script>
+  <script src="citation-viewer.js"></script>
   <script src="app.js"></script>
 </body>
 
