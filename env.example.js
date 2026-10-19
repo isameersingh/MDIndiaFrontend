@@ -31,7 +31,7 @@ window.ENV = {
   // in app.js and citation-viewer.js is built from this value.
   //   Local development : 'http://localhost:8000'  (or 8001, see README)
   //   Client/prod server: 'http://10.14.31.133:30085'  (or your real domain)
-  API_BASE: 'http://localhost:8000',
+  API_BASE: 'http://10.14.31.134:30080',
 
   // Optional: override the Swagger/OpenAPI docs URL if it isn't simply
   // `${API_BASE}/docs` (e.g. docs are hosted at a different path/host
