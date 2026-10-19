@@ -13,7 +13,7 @@ window.ENV = {
   // Port 8000 (the documented default) is occupied on this machine by an
   // unrelated project — the MD India backend is currently running on 8001.
   // Change this back to 8000 (or to a staging/prod URL) as needed.
-  API_BASE: 'http://localhost:8001',
+  API_BASE: 'http://10.14.31.134:30080',
 
   API_DOCS_URL: null,
   API_KEY: '',
