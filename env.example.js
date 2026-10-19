@@ -25,7 +25,7 @@
 window.ENV = {
   // Short label shown in the UI (sidebar footer) so it's obvious at a
   // glance which backend you're pointed at. Purely cosmetic.
-  ENV_NAME: 'local',
+  ENV_NAME: 'prod',
 
   // Base URL of the backend API for this environment. Every fetch() call
   // in app.js and citation-viewer.js is built from this value.
