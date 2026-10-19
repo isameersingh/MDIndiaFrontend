@@ -8,7 +8,7 @@
  * without treating that commit as sensitive.
  */
 window.ENV = {
-  ENV_NAME: 'local',
+  ENV_NAME: 'prod',
 
   // Port 8000 (the documented default) is occupied on this machine by an
   // unrelated project — the MD India backend is currently running on 8001.
